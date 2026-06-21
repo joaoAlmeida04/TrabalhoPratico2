@@ -71,7 +71,7 @@ O front-end consome a API do back-end, então **o back-end precisa estar rodando
 
 ## 📄 Relatório
 
-O relatório técnico está em `docs/relatorio.tex`, no modelo **SBC**. Para compilar:
+O relatório técnico está em `docs/TrabalhoPratico2.pdf`.
 
 ```bash
 cd docs
