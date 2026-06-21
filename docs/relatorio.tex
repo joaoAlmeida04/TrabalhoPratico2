@@ -1,0 +1,234 @@
+\documentclass[12pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{sbc-template}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue}
+
+% ---- Configuração de listagens de código ----
+\definecolor{codegray}{gray}{0.95}
+\definecolor{keywordc}{rgb}{0.0,0.0,0.6}
+\definecolor{commentc}{rgb}{0.25,0.5,0.35}
+\definecolor{stringc}{rgb}{0.6,0.1,0.1}
+\lstset{
+  backgroundcolor=\color{codegray},
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{keywordc}\bfseries,
+  commentstyle=\color{commentc}\itshape,
+  stringstyle=\color{stringc},
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny,
+  showstringspaces=false,
+  tabsize=2,
+  captionpos=b
+}
+
+\title{Sistema de Locadora de Veículos: \\ Modelagem de Dados e Backend RESTful com ASP.NET Core e Entity Framework}
+
+\author{Cecília [Sobrenome]\inst{1}}
+
+\address{Curso de [Disciplina] --- Pontifícia Universidade Católica de Minas Gerais (PUC Minas)\\
+  Belo Horizonte --- MG --- Brasil
+  \email{seu.email@sga.pucminas.br}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{resumo}
+Este relatório descreve o desenvolvimento de um sistema de gerenciamento para uma locadora de veículos, contemplando a modelagem do banco de dados relacional, a implementação de uma API RESTful em C\# com ASP.NET Core e Entity Framework Core, e a documentação via Swagger. O sistema implementa seis entidades inter-relacionadas, operações CRUD completas, validação de dados e cinco rotas de filtro que empregam diferentes tipos de junção entre tabelas. Discutem-se as decisões de projeto, a arquitetura adotada e os testes realizados.
+\end{resumo}
+
+\begin{abstract}
+This report describes the development of a management system for a vehicle rental company, covering relational database modeling, the implementation of a RESTful API in C\# with ASP.NET Core and Entity Framework Core, and Swagger documentation. The system implements six interrelated entities, full CRUD operations, data validation, and five filter routes employing different types of table joins. Design decisions, the adopted architecture, and the tests performed are discussed.
+\end{abstract}
+
+% ============================================================
+\section{Introdução}
+
+A gestão de uma locadora de veículos envolve o controle simultâneo de frota, clientes, contratos de aluguel e pagamentos. Realizar esse controle de forma manual ou por planilhas é propenso a erros de consistência --- como alugar um veículo já comprometido ou perder o histórico de devoluções. Um sistema informatizado apoiado por um banco de dados relacional resolve esses problemas ao centralizar a informação e impor regras de integridade.
+
+Este trabalho tem como objetivo desenvolver um sistema completo de \emph{backend} para uma locadora de veículos, capaz de: (i) cadastrar e gerenciar veículos, fabricantes, categorias e clientes; (ii) registrar aluguéis e suas devoluções, calculando valores automaticamente; (iii) processar pagamentos com controle de saldo; e (iv) oferecer consultas analíticas por meio de filtros que cruzam múltiplas tabelas.
+
+As tecnologias empregadas foram C\# com ASP.NET Core para a construção da API, Entity Framework Core como mapeador objeto-relacional (ORM), SQL Server Express como sistema gerenciador de banco de dados (SGBD) e Swagger (OpenAPI) para documentação e teste interativo das rotas.
+
+% ============================================================
+\section{Requisitos Funcionais}
+
+O sistema atende aos seguintes requisitos funcionais:
+
+\begin{itemize}
+  \item \textbf{RF01 --- Gestão de fabricantes:} cadastrar, consultar, editar e excluir fabricantes (marcas), com bloqueio de exclusão quando há veículos vinculados.
+  \item \textbf{RF02 --- Gestão de categorias:} manter categorias de veículos (econômico, SUV, luxo etc.), cada uma com um fator multiplicador de preço.
+  \item \textbf{RF03 --- Gestão de veículos:} registrar veículos vinculados obrigatoriamente a um fabricante e a uma categoria, com modelo, ano de fabricação, quilometragem, placa e valor de diária.
+  \item \textbf{RF04 --- Gestão de clientes:} cadastrar clientes com nome, CPF (único), e-mail (único) e saldo em carteira.
+  \item \textbf{RF05 --- Registro de aluguéis:} criar um aluguel associando cliente e veículo em um período, calculando automaticamente o valor da diária (diária base $\times$ fator da categoria) e o valor total.
+  \item \textbf{RF06 --- Devolução:} registrar a devolução do veículo, gravando data e quilometragem finais, recalculando o valor em caso de atraso e liberando o veículo.
+  \item \textbf{RF07 --- Recarga e pagamento:} recarregar o saldo do cliente e processar pagamentos, debitando a carteira quando a forma escolhida é "saldo".
+  \item \textbf{RF08 --- Consultas analíticas:} oferecer filtros que cruzam tabelas, como faturamento por fabricante e resumo de aluguéis por cliente.
+\end{itemize}
+
+\subsection{Casos de Uso Principais}
+
+O caso de uso central é o \emph{Realizar Aluguel}: o atendente seleciona um cliente e um veículo disponível, define o período e o sistema calcula o custo, marca o veículo como indisponível e cria o registro. Seu complemento é o \emph{Registrar Devolução}, que encerra o contrato, atualiza a quilometragem do veículo e o disponibiliza novamente.
+
+% ============================================================
+\section{Arquitetura do Sistema}
+
+A aplicação segue uma arquitetura em camadas inspirada no padrão MVC, adaptada para uma API sem camada de visão renderizada no servidor (a visão é o cliente \emph{front-end} consumidor). As responsabilidades dividem-se em:
+
+\begin{itemize}
+  \item \textbf{Camada de Modelo (\texttt{Models}):} classes de entidade que representam as tabelas e seus relacionamentos, anotadas com regras de validação.
+  \item \textbf{Camada de Acesso a Dados (\texttt{Data}):} a classe \texttt{AppDbContext}, que configura o mapeamento objeto-relacional, restrições de integridade e a carga inicial de dados (\emph{seed}).
+  \item \textbf{Camada de Controle (\texttt{Controllers}):} controladores que expõem os \emph{endpoints} REST, orquestram a lógica de negócio e retornam respostas HTTP apropriadas.
+  \item \textbf{Objetos de Transferência (\texttt{DTOs}):} estruturas que isolam o contrato da API do modelo interno, evitando exposição direta das entidades e ciclos de serialização.
+\end{itemize}
+
+Essa separação favorece a manutenibilidade: alterações no esquema do banco ficam contidas na camada de modelo e dados, enquanto o contrato externo da API permanece estável através dos DTOs.
+
+% ============================================================
+\section{Implementação Técnica}
+
+\subsection{Tecnologias}
+
+O \emph{backend} foi construído sobre o ASP.NET Core (\texttt{net8.0}), utilizando os pacotes \texttt{Microsoft.EntityFrameworkCore.SqlServer} para persistência e \texttt{Swashbuckle.AspNetCore} para a documentação OpenAPI. O EF Core opera no modo \emph{Code First}: as tabelas são derivadas das classes C\#.
+
+\subsection{Principais Classes}
+
+A classe \texttt{AppDbContext} concentra a configuração do modelo. O trecho a seguir ilustra a definição de índices únicos e do comportamento de exclusão, que evita deleções em cascata indesejadas:
+
+\begin{lstlisting}[language=,caption={Configuração de restrições no AppDbContext.}]
+modelBuilder.Entity<Cliente>()
+    .HasIndex(c => c.Cpf).IsUnique();
+
+modelBuilder.Entity<Aluguel>()
+    .HasOne(a => a.Veiculo)
+    .WithMany(v => v.Alugueis)
+    .HasForeignKey(a => a.VeiculoId)
+    .OnDelete(DeleteBehavior.Restrict);
+\end{lstlisting}
+
+A lógica de negócio mais relevante está no \texttt{AlugueisController}, que calcula o valor do contrato a partir do fator de preço da categoria:
+
+\begin{lstlisting}[language=,caption={Cálculo do valor do aluguel.}]
+var fator = veiculo.CategoriaVeiculo?.FatorPreco ?? 1.0m;
+var valorDiaria = Math.Round(veiculo.ValorDiariaBase * fator, 2);
+var dias = (input.DataDevolucaoPrevista.Date
+            - input.DataRetirada.Date).Days;
+if (dias < 1) dias = 1;
+var valorTotal = valorDiaria * dias;
+\end{lstlisting}
+
+\subsection{Escolhas de Projeto}
+
+Optou-se por \texttt{DeleteBehavior.Restrict} em vez de cascata para preservar o histórico: um cliente ou veículo com aluguéis não pode ser apagado, evitando perda de registros financeiros. A validação ocorre em duas frentes: anotações de dados (\texttt{DataAnnotations}) nos DTOs, verificadas automaticamente pelo \emph{model binding}, e validações de regra de negócio nos controladores (ex.: veículo indisponível, saldo insuficiente).
+
+% ============================================================
+\section{Descrição do Banco de Dados}
+
+\subsection{Modelo de Dados}
+
+O banco possui seis tabelas. A Tabela~\ref{tab:entidades} resume as entidades e seus principais atributos.
+
+\begin{table}[h]
+\centering
+\caption{Entidades do sistema.}
+\label{tab:entidades}
+\begin{tabular}{|l|p{9.5cm}|}
+\hline
+\textbf{Entidade} & \textbf{Principais atributos} \\
+\hline
+Fabricante & Id, Nome, PaisOrigem \\
+\hline
+CategoriaVeiculo & Id, Nome, Descricao, FatorPreco \\
+\hline
+Veiculo & Id, Modelo, AnoFabricacao, Quilometragem, Placa, ValorDiariaBase, Disponivel, FabricanteId (FK), CategoriaVeiculoId (FK) \\
+\hline
+Cliente & Id, Nome, Cpf (único), Email (único), Telefone, Cidade, Saldo \\
+\hline
+Aluguel & Id, ClienteId (FK), VeiculoId (FK), DataRetirada, DataDevolucaoPrevista, DataDevolucaoReal, QuilometragemInicial, QuilometragemFinal, ValorDiaria, ValorTotal, Devolvido \\
+\hline
+Pagamento & Id, AluguelId (FK), Valor, Forma, DataPagamento, Confirmado \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Relacionamentos e Integridade}
+
+Os relacionamentos são: Fabricante 1:N Veículo; CategoriaVeiculo 1:N Veículo; Cliente 1:N Aluguel; Veículo 1:N Aluguel; e Aluguel 1:N Pagamento. As chaves estrangeiras garantem a integridade referencial, e índices únicos sobre CPF, e-mail e placa impedem duplicidades.
+
+\subsection{Consultas SQL Relevantes}
+
+O filtro de faturamento por fabricante, gerado pelo EF Core, corresponde aproximadamente à seguinte consulta SQL com junção e agrupamento:
+
+\begin{lstlisting}[language=SQL,caption={Faturamento por fabricante (INNER JOIN + GROUP BY).}]
+SELECT f.Nome, COUNT(*) AS QtdAlugueis,
+       SUM(a.ValorTotal) AS Faturamento
+FROM Alugueis a
+INNER JOIN Veiculos v ON a.VeiculoId = v.Id
+INNER JOIN Fabricantes f ON v.FabricanteId = f.Id
+GROUP BY f.Nome
+ORDER BY Faturamento DESC;
+\end{lstlisting}
+
+% ============================================================
+\section{Testes e Validação}
+
+Os testes foram conduzidos manualmente através da interface do Swagger, exercitando cada \emph{endpoint}. Para cada entidade verificou-se o ciclo completo: criação (POST), listagem e busca (GET), atualização (PUT) e exclusão (DELETE). Validaram-se também os cenários de erro: criação de cliente com CPF duplicado (retorno 409), aluguel de veículo indisponível (409), pagamento com saldo insuficiente (400) e busca de registro inexistente (404).
+
+Os cinco filtros com junções foram testados com os dados de carga inicial, confirmando que os resultados de faturamento, contagem e resumos correspondiam aos valores esperados. Não foram identificados problemas de consistência; o principal ajuste durante o desenvolvimento foi a inclusão de \texttt{ReferenceHandler.IgnoreCycles} na serialização JSON, para evitar laços infinitos entre entidades relacionadas.
+
+% ============================================================
+\section{Resultados e Conclusões}
+
+O sistema desenvolvido atende integralmente aos requisitos propostos: seis entidades (uma além do mínimo exigido), operações CRUD completas, cinco filtros com pelo menos dois tipos de junção (INNER JOIN e LEFT JOIN) e documentação interativa via Swagger. A modelagem relacional mostrou-se adequada para representar as regras do domínio, e o uso do Entity Framework no modo \emph{Code First} agilizou a evolução do esquema.
+
+Conclui-se que a solução é eficaz para as necessidades de uma locadora de veículos de pequeno e médio porte, oferecendo controle confiável da frota, dos contratos e das finanças.
+
+% ============================================================
+\section{Considerações Finais}
+
+O desenvolvimento consolidou conceitos de modelagem de dados, mapeamento objeto-relacional e construção de APIs REST. Como melhorias futuras, sugerem-se: autenticação e autorização de usuários, paginação nas listagens, geração de relatórios em PDF e testes automatizados com xUnit.
+
+% ============================================================
+\section{Referências}
+
+\begin{thebibliography}{9}
+
+\bibitem{efcore} MICROSOFT. \emph{Entity Framework Core documentation}. Disponível em: \url{https://learn.microsoft.com/ef/core/}. Acesso em: jun. 2026.
+
+\bibitem{aspnet} MICROSOFT. \emph{ASP.NET Core documentation}. Disponível em: \url{https://learn.microsoft.com/aspnet/core/}. Acesso em: jun. 2026.
+
+\bibitem{swagger} SMARTBEAR. \emph{Swagger / OpenAPI Specification}. Disponível em: \url{https://swagger.io/specification/}. Acesso em: jun. 2026.
+
+\bibitem{rest} FIELDING, R. T. \emph{Architectural Styles and the Design of Network-based Software Architectures}. Tese (Doutorado) --- University of California, Irvine, 2000.
+
+\end{thebibliography}
+
+% ============================================================
+\section{Apêndices}
+
+\subsection{Repositório e Vídeo}
+
+\begin{itemize}
+  \item Repositório GitHub: \url{https://github.com/SEU-USUARIO/locadora-veiculos}
+  \item Vídeo de apresentação (pitch): \url{https://youtube.com/SEU-VIDEO}
+\end{itemize}
+
+\subsection{Lista de Endpoints}
+
+A documentação completa e interativa de todos os \emph{endpoints} está disponível na interface Swagger, acessível em \url{http://localhost:5000/swagger} quando a aplicação está em execução.
+
+\end{document}

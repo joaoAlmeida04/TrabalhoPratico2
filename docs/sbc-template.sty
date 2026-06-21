@@ -1,0 +1,46 @@
+% sbc-template.sty - Reconstrucao do estilo oficial SBC
+\usepackage{ifthen}
+\usepackage{calc}
+\setlength{\textwidth}{16.0cm}
+\setlength{\textheight}{22.0cm}
+\setlength{\oddsidemargin}{0.2cm}
+\setlength{\evensidemargin}{0.2cm}
+\setlength{\topmargin}{-0.5cm}
+\setlength{\headsep}{1.0cm}
+\setlength{\parindent}{1.27cm}
+\setlength{\parskip}{0pt}
+\renewcommand{\section}{\@startsection{section}{1}{\z@}%
+  {-3.5ex plus -1ex minus -.2ex}{2.3ex plus .2ex}%
+  {\reset@font\large\bf\raggedright}}
+\renewcommand{\subsection}{\@startsection{subsection}{2}{\z@}%
+  {-3.25ex plus -1ex minus -.2ex}{1.5ex plus .2ex}%
+  {\reset@font\normalsize\bf\raggedright}}
+\renewcommand{\subsubsection}{\@startsection{subsubsection}{3}{\z@}%
+  {-3.25ex plus -1ex minus -.2ex}{1.5ex plus .2ex}%
+  {\reset@font\normalsize\bf\raggedright}}
+\renewcommand\thesection{\arabic{section}.}
+\renewcommand\thesubsection{\thesection\arabic{subsection}.}
+\renewcommand\thesubsubsection{\thesubsection\arabic{subsubsection}.}
+\newcommand{\@addressstore}{}
+\renewcommand{\@maketitle}{%
+  \newpage\null
+  \begin{center}%
+    {\Large\bf \@title \par}%
+    \vskip 1.5em%
+    {\large \@author \par}%
+    \vskip 1em%
+    {\small \@addressstore \par}%
+  \end{center}%
+  \par\vskip 1.5em}
+\newenvironment{resumo}%
+  {\begin{center}\bf Resumo\end{center}\begin{quotation}\small}%
+  {\end{quotation}}
+\renewenvironment{abstract}%
+  {\begin{center}\bf Abstract\end{center}\begin{quotation}\small}%
+  {\end{quotation}}
+\newcommand{\address}[1]{\renewcommand{\@addressstore}{#1}}
+\providecommand{\email}{}
+\renewcommand{\email}[1]{\texttt{\small #1}}
+\providecommand{\inst}[1]{\textsuperscript{#1}}
+\usepackage[labelsep=period]{caption}
+\pagestyle{empty}

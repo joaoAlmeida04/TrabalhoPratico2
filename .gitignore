@@ -1,0 +1,21 @@
+# Build .NET
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+.vs/
+
+# Banco local
+*.mdf
+*.ldf
+
+# Ambiente
+.env
+appsettings.Development.json
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Node (caso use algum tooling no front)
+node_modules/
