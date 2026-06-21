@@ -83,4 +83,4 @@ O arquivo `docs/relatorio_preview.pdf` é uma prévia já compilada do layout.
 
 ## 👤 Autoria
 
-Cecília [Sobrenome] — PUC Minas — [Disciplina] — 2026.
+João Vitor Almeida- Analise e Desenvolvimento de Sistemas
